@@ -1,0 +1,74 @@
+[
+  {
+    "id": "q001",
+    "question": "What is the rate limit for the Vanta Billing API free tier?",
+    "expected_answer": "The Vanta Billing API free tier allows 100 requests per minute.",
+    "expected_source_ids": ["billing-api-limits-v2"],
+    "category": "api",
+    "difficulty": "easy",
+    "notes": "Direct lookup — answer is stated verbatim in the rate limits doc."
+  },
+  {
+    "id": "q002",
+    "question": "How do I authenticate with the Vanta Billing API?",
+    "expected_answer": "Authentication uses Bearer tokens passed in the Authorization header. Tokens are generated from the API Keys section of the dashboard and expire after 90 days.",
+    "expected_source_ids": ["billing-api-auth-guide"],
+    "category": "api",
+    "difficulty": "easy",
+    "notes": "Direct lookup — single chunk covers auth method and expiry."
+  },
+  {
+    "id": "q003",
+    "question": "Can I use a single API key to access both the Vanta Billing API and the Vanta Reporting API?",
+    "expected_answer": "No. API keys are scoped per product. You must generate a separate key for the Billing API and a separate key for the Reporting API from the respective sections in the dashboard.",
+    "expected_source_ids": ["billing-api-auth-guide", "reporting-api-auth-guide"],
+    "category": "api",
+    "difficulty": "medium",
+    "notes": "Requires combining information from two auth guide chunks."
+  },
+  {
+    "id": "q004",
+    "question": "What happens if my subscription invoice fails payment three times in a row?",
+    "expected_answer": "After three consecutive failed payment attempts, the subscription is automatically moved to a 'past_due' state and a webhook event is fired. If payment is not resolved within 14 days, the subscription is cancelled and a final invoice is issued.",
+    "expected_source_ids": ["billing-retry-policy", "billing-subscription-states"],
+    "category": "billing",
+    "difficulty": "medium",
+    "notes": "The retry count lives in billing-retry-policy; the state transition and cancellation window live in billing-subscription-states."
+  },
+  {
+    "id": "q005",
+    "question": "Is it possible to backdate a subscription start date to last month for compliance purposes?",
+    "expected_answer": "Subscription start dates cannot be backdated via the API. The start_date field is set at creation time and is immutable. For compliance backdating, contact support with your account ID and the required date.",
+    "expected_source_ids": ["billing-api-subscriptions", "billing-support-escalation"],
+    "category": "billing",
+    "difficulty": "hard",
+    "notes": "Ambiguous phrasing ('compliance purposes') — the user might mean legal compliance or internal accounting. The answer requires reasoning: API limitation + support path."
+  },
+  {
+    "id": "q006",
+    "question": "We charge customers in three currencies. Will the Vanta Billing API automatically handle FX conversion on invoices?",
+    "expected_answer": "The Vanta Billing API does not perform automatic FX conversion. Invoices are issued in the currency set on the customer object at creation. If you need multi-currency invoicing, you must create a separate customer object per currency and manage FX rates in your own system.",
+    "expected_source_ids": ["billing-api-invoices", "billing-api-customers"],
+    "category": "billing",
+    "difficulty": "hard",
+    "notes": "Hard because 'handle FX conversion' is ambiguous — the system does store currency, but does not convert. Requires reasoning over what the API does vs does not do."
+  },
+  {
+    "id": "q007",
+    "question": "What is the refund policy for seats that were accidentally provisioned by a script bug?",
+    "expected_answer": "The knowledge base does not contain a refund policy for programmatic over-provisioning. Please contact support at support@vanta.example.com.",
+    "expected_source_ids": [],
+    "category": "billing",
+    "difficulty": "adversarial",
+    "notes": "The answer is NOT in the knowledge base. A well-behaved RAG system should say it cannot find the information rather than hallucinate a policy."
+  },
+  {
+    "id": "q008",
+    "question": "Can I use the Vanta Billing API to charge a customer before their trial ends?",
+    "expected_answer": "Yes, but only if the customer has a valid payment method on file and you explicitly call the POST /subscriptions/{id}/convert endpoint with charge_immediately: true. If charge_immediately is omitted or false, billing begins at the scheduled trial end date.",
+    "expected_source_ids": ["billing-api-trials"],
+    "category": "api",
+    "difficulty": "medium",
+    "notes": "Edge case — the question sits at the boundary between trial management and billing. Tests whether the system retrieves the trial-conversion endpoint docs rather than generic billing docs."
+  }
+]

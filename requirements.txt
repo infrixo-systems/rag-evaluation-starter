@@ -1,0 +1,4 @@
+sentence-transformers>=2.0
+tiktoken>=0.5
+rich>=13.0
+numpy>=1.24

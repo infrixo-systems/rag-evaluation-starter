@@ -1,0 +1,478 @@
+{
+  "summary": {
+    "n_questions": 8,
+    "mean_scores": {
+      "retrieval_recall_at_k": 0.75,
+      "answer_faithfulness": 0.6875,
+      "exact_match": 0.25,
+      "token_f1": 0.8194
+    },
+    "verdicts": {
+      "retrieval_recall_at_k": {
+        "PASS": 7,
+        "WARN": 0,
+        "FAIL": 1,
+        "SKIP": 0
+      },
+      "answer_faithfulness": {
+        "PASS": 6,
+        "WARN": 2,
+        "FAIL": 0,
+        "SKIP": 0
+      },
+      "answer_relevance": {
+        "PASS": 0,
+        "WARN": 0,
+        "FAIL": 0,
+        "SKIP": 8
+      },
+      "exact_match": {
+        "PASS": 2,
+        "WARN": 0,
+        "FAIL": 6,
+        "SKIP": 0
+      },
+      "token_f1": {
+        "PASS": 8,
+        "WARN": 0,
+        "FAIL": 0,
+        "SKIP": 0
+      }
+    },
+    "avg_latency_s": 0.0
+  },
+  "results": [
+    {
+      "id": "q001",
+      "category": "api",
+      "difficulty": "easy",
+      "question": "What is the rate limit for the Vanta Billing API free tier?",
+      "expected_answer": "The Vanta Billing API free tier allows 100 requests per minute.",
+      "generated_answer": "The Vanta Billing API free tier allows 100 requests per minute.",
+      "retrieved_chunks": [
+        {
+          "text": "Vanta Billing API rate limits: Free tier — 100 requests per minute. Growth tier — 1 000 requests per minute. Enterprise — custom limits. Requests exceeding the limit receive HTTP 429 and should be retried with exponential back-off.",
+          "source_id": "billing-api-limits-v2"
+        },
+        {
+          "text": "Invoices are issued in the currency configured on the customer object. The Vanta Billing API does not perform foreign exchange conversion. Supported currencies: USD, EUR, GBP, AUD, CAD. Set the currency when creating the customer; it cannot be changed after the first invoice.",
+          "source_id": "billing-api-invoices"
+        },
+        {
+          "text": "Authentication: All requests must include an Authorization header with a Bearer token. Tokens are generated from the API Keys section of the Vanta dashboard. Each token expires after 90 days. Revoke tokens from the same dashboard section.",
+          "source_id": "billing-api-auth-guide"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 1.0,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.9091,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 1.0,
+          "verdict": "PASS"
+        },
+        "token_f1": {
+          "score": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.001,
+        "total_s": 0.001
+      }
+    },
+    {
+      "id": "q002",
+      "category": "api",
+      "difficulty": "easy",
+      "question": "How do I authenticate with the Vanta Billing API?",
+      "expected_answer": "Authentication uses Bearer tokens passed in the Authorization header. Tokens are generated from the API Keys section of the dashboard and expire after 90 days.",
+      "generated_answer": "Authentication uses Bearer tokens passed in the Authorization header. Tokens are generated from the API Keys section of the dashboard and expire after 90 days.",
+      "retrieved_chunks": [
+        {
+          "text": "Vanta Billing API rate limits: Free tier — 100 requests per minute. Growth tier — 1 000 requests per minute. Enterprise — custom limits. Requests exceeding the limit receive HTTP 429 and should be retried with exponential back-off.",
+          "source_id": "billing-api-limits-v2"
+        },
+        {
+          "text": "Authentication: All requests must include an Authorization header with a Bearer token. Tokens are generated from the API Keys section of the Vanta dashboard. Each token expires after 90 days. Revoke tokens from the same dashboard section.",
+          "source_id": "billing-api-auth-guide"
+        },
+        {
+          "text": "Reporting API authentication: API keys are scoped per product. Generate a Reporting API key from Settings > Reporting > API Keys. Do not reuse Billing API keys — they will be rejected with HTTP 403.",
+          "source_id": "reporting-api-auth-guide"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 1.0,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.8182,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 1.0,
+          "verdict": "PASS"
+        },
+        "token_f1": {
+          "score": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q003",
+      "category": "api",
+      "difficulty": "medium",
+      "question": "Can I use a single API key to access both the Vanta Billing API and the Vanta Reporting API?",
+      "expected_answer": "No. API keys are scoped per product. You must generate a separate key for the Billing API and a separate key for the Reporting API from the respective sections in the dashboard.",
+      "generated_answer": "API keys are scoped per product. You need a separate key for the Billing API and a separate key for the Reporting API.",
+      "retrieved_chunks": [
+        {
+          "text": "Vanta Billing API rate limits: Free tier — 100 requests per minute. Growth tier — 1 000 requests per minute. Enterprise — custom limits. Requests exceeding the limit receive HTTP 429 and should be retried with exponential back-off.",
+          "source_id": "billing-api-limits-v2"
+        },
+        {
+          "text": "Reporting API authentication: API keys are scoped per product. Generate a Reporting API key from Settings > Reporting > API Keys. Do not reuse Billing API keys — they will be rejected with HTTP 403.",
+          "source_id": "reporting-api-auth-guide"
+        },
+        {
+          "text": "Failed payment retry policy: Vanta retries failed invoice payments up to three times over seven days. After the third failure the subscription transitions to 'past_due' and a webhook event 'invoice.payment_failed' is dispatched.",
+          "source_id": "billing-retry-policy"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 0.5,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.75,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.8,
+          "precision": 0.9565,
+          "recall": 0.6875,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q004",
+      "category": "billing",
+      "difficulty": "medium",
+      "question": "What happens if my subscription invoice fails payment three times in a row?",
+      "expected_answer": "After three consecutive failed payment attempts, the subscription is automatically moved to a 'past_due' state and a webhook event is fired. If payment is not resolved within 14 days, the subscription is cancelled and a final invoice is issued.",
+      "generated_answer": "After three failed payment attempts the subscription enters a past_due state. A webhook is fired. If payment is not resolved within 14 days the subscription is cancelled and a final invoice is issued.",
+      "retrieved_chunks": [
+        {
+          "text": "Failed payment retry policy: Vanta retries failed invoice payments up to three times over seven days. After the third failure the subscription transitions to 'past_due' and a webhook event 'invoice.payment_failed' is dispatched.",
+          "source_id": "billing-retry-policy"
+        },
+        {
+          "text": "Subscription states: active, trialing, past_due, cancelled. A subscription in past_due remains accessible for 14 days. If payment is not resolved within 14 days the subscription moves to cancelled and a final invoice is issued. Cancelled subscriptions cannot be reactivated; a new subscription must be created.",
+          "source_id": "billing-subscription-states"
+        },
+        {
+          "text": "Trial management: Subscriptions can include a trial_end date. By default billing begins automatically at trial_end. To charge before the trial ends call POST /subscriptions/{id}/convert with the body {\"charge_immediately\": true}. The customer must have a valid payment method on file. Omitting charge_immediately (or setting it to false) schedules billing for the original trial_end date.",
+          "source_id": "billing-api-trials"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 1.0,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.84,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.8889,
+          "precision": 0.9697,
+          "recall": 0.8205,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q005",
+      "category": "billing",
+      "difficulty": "hard",
+      "question": "Is it possible to backdate a subscription start date to last month for compliance purposes?",
+      "expected_answer": "Subscription start dates cannot be backdated via the API. The start_date field is set at creation time and is immutable. For compliance backdating, contact support with your account ID and the required date.",
+      "generated_answer": "Subscription start dates cannot be backdated via the API — the start_date field is immutable after creation. For compliance backdating, contact support with your account ID and the required date.",
+      "retrieved_chunks": [
+        {
+          "text": "Subscription states: active, trialing, past_due, cancelled. A subscription in past_due remains accessible for 14 days. If payment is not resolved within 14 days the subscription moves to cancelled and a final invoice is issued. Cancelled subscriptions cannot be reactivated; a new subscription must be created.",
+          "source_id": "billing-subscription-states"
+        },
+        {
+          "text": "Failed payment retry policy: Vanta retries failed invoice payments up to three times over seven days. After the third failure the subscription transitions to 'past_due' and a webhook event 'invoice.payment_failed' is dispatched.",
+          "source_id": "billing-retry-policy"
+        },
+        {
+          "text": "Trial management: Subscriptions can include a trial_end date. By default billing begins automatically at trial_end. To charge before the trial ends call POST /subscriptions/{id}/convert with the body {\"charge_immediately\": true}. The customer must have a valid payment method on file. Omitting charge_immediately (or setting it to false) schedules billing for the original trial_end date.",
+          "source_id": "billing-api-trials"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 0.0,
+          "k": 3,
+          "verdict": "FAIL"
+        },
+        "answer_faithfulness": {
+          "score": 0.3571,
+          "method": "token_overlap",
+          "verdict": "WARN"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.8889,
+          "precision": 0.9333,
+          "recall": 0.8485,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q006",
+      "category": "billing",
+      "difficulty": "hard",
+      "question": "We charge customers in three currencies. Will the Vanta Billing API automatically handle FX conversion on invoices?",
+      "expected_answer": "The Vanta Billing API does not perform automatic FX conversion. Invoices are issued in the currency set on the customer object at creation. If you need multi-currency invoicing, you must create a separate customer object per currency and manage FX rates in your own system.",
+      "generated_answer": "The Vanta Billing API does not automatically handle FX conversion. Invoices are issued in the currency set on the customer object. For multi-currency billing you must create separate customer objects per currency.",
+      "retrieved_chunks": [
+        {
+          "text": "Invoices are issued in the currency configured on the customer object. The Vanta Billing API does not perform foreign exchange conversion. Supported currencies: USD, EUR, GBP, AUD, CAD. Set the currency when creating the customer; it cannot be changed after the first invoice.",
+          "source_id": "billing-api-invoices"
+        },
+        {
+          "text": "Trial management: Subscriptions can include a trial_end date. By default billing begins automatically at trial_end. To charge before the trial ends call POST /subscriptions/{id}/convert with the body {\"charge_immediately\": true}. The customer must have a valid payment method on file. Omitting charge_immediately (or setting it to false) schedules billing for the original trial_end date.",
+          "source_id": "billing-api-trials"
+        },
+        {
+          "text": "Vanta Billing API rate limits: Free tier — 100 requests per minute. Growth tier — 1 000 requests per minute. Enterprise — custom limits. Requests exceeding the limit receive HTTP 429 and should be retried with exponential back-off.",
+          "source_id": "billing-api-limits-v2"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 0.5,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.7407,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.7013,
+          "precision": 0.8438,
+          "recall": 0.6,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q007",
+      "category": "billing",
+      "difficulty": "adversarial",
+      "question": "What is the refund policy for seats that were accidentally provisioned by a script bug?",
+      "expected_answer": "The knowledge base does not contain a refund policy for programmatic over-provisioning. Please contact support at support@vanta.example.com.",
+      "generated_answer": "I could not find information about refund policies for accidentally provisioned seats in the knowledge base. Please contact support at support@vanta.example.com.",
+      "retrieved_chunks": [
+        {
+          "text": "Subscription states: active, trialing, past_due, cancelled. A subscription in past_due remains accessible for 14 days. If payment is not resolved within 14 days the subscription moves to cancelled and a final invoice is issued. Cancelled subscriptions cannot be reactivated; a new subscription must be created.",
+          "source_id": "billing-subscription-states"
+        },
+        {
+          "text": "Support escalation: For issues that cannot be resolved via the API, contact support at support@vanta.example.com and include your account ID, a description of the issue, and any relevant timestamps.",
+          "source_id": "billing-support-escalation"
+        },
+        {
+          "text": "Trial management: Subscriptions can include a trial_end date. By default billing begins automatically at trial_end. To charge before the trial ends call POST /subscriptions/{id}/convert with the body {\"charge_immediately\": true}. The customer must have a valid payment method on file. Omitting charge_immediately (or setting it to false) schedules billing for the original trial_end date.",
+          "source_id": "billing-api-trials"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 1.0,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.381,
+          "method": "token_overlap",
+          "verdict": "WARN"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.5789,
+          "precision": 0.5238,
+          "recall": 0.6471,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    },
+    {
+      "id": "q008",
+      "category": "api",
+      "difficulty": "medium",
+      "question": "Can I use the Vanta Billing API to charge a customer before their trial ends?",
+      "expected_answer": "Yes, but only if the customer has a valid payment method on file and you explicitly call the POST /subscriptions/{id}/convert endpoint with charge_immediately: true. If charge_immediately is omitted or false, billing begins at the scheduled trial end date.",
+      "generated_answer": "Yes. Call POST /subscriptions/{id}/convert with charge_immediately: true and ensure the customer has a valid payment method on file. Without that flag billing starts at the trial end date.",
+      "retrieved_chunks": [
+        {
+          "text": "Trial management: Subscriptions can include a trial_end date. By default billing begins automatically at trial_end. To charge before the trial ends call POST /subscriptions/{id}/convert with the body {\"charge_immediately\": true}. The customer must have a valid payment method on file. Omitting charge_immediately (or setting it to false) schedules billing for the original trial_end date.",
+          "source_id": "billing-api-trials"
+        },
+        {
+          "text": "Invoices are issued in the currency configured on the customer object. The Vanta Billing API does not perform foreign exchange conversion. Supported currencies: USD, EUR, GBP, AUD, CAD. Set the currency when creating the customer; it cannot be changed after the first invoice.",
+          "source_id": "billing-api-invoices"
+        },
+        {
+          "text": "Vanta Billing API rate limits: Free tier — 100 requests per minute. Growth tier — 1 000 requests per minute. Enterprise — custom limits. Requests exceeding the limit receive HTTP 429 and should be retried with exponential back-off.",
+          "source_id": "billing-api-limits-v2"
+        }
+      ],
+      "metrics": {
+        "retrieval_recall_at_k": {
+          "score": 1.0,
+          "k": 3,
+          "verdict": "PASS"
+        },
+        "answer_faithfulness": {
+          "score": 0.7037,
+          "method": "token_overlap",
+          "verdict": "PASS"
+        },
+        "answer_relevance": {
+          "score": null,
+          "method": "skipped",
+          "verdict": "SKIP"
+        },
+        "exact_match": {
+          "score": 0.0,
+          "verdict": "FAIL"
+        },
+        "token_f1": {
+          "score": 0.697,
+          "precision": 0.8214,
+          "recall": 0.6053,
+          "verdict": "PASS"
+        }
+      },
+      "latency": {
+        "retrieval_s": 0.0,
+        "generation_s": 0.0,
+        "total_s": 0.0
+      }
+    }
+  ]
+}
