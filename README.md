@@ -229,4 +229,30 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
+## Going Beyond Evaluation — Production Guardrails
+
+Evaluation tells you where your RAG is broken.
+Guardrails stop those breaks from reaching your users.
+
+Once your scores are green, the next layer is a production safety 
+pipeline:
+
+| Layer | What it catches |
+|---|---|
+| Faithfulness gate | LLM answers that distort or ignore retrieved context |
+| Input guardrails | Prompt injection via user queries and retrieved documents |
+| Output guardrails | PII leaks, toxic responses, off-topic drift |
+| Citation attribution | Unverifiable claims with no traceable source |
+| Uncertainty abstention | Low-confidence answers that should never reach users |
+
+We built a complete implementation of this stack — claim-level 
+LLM-as-judge, Presidio PII redaction, consistency-based abstention, 
+and Prometheus monitoring — documented across a technical playbook 
+and 7 executed Jupyter notebooks.
+
+**[Get the Production RAG Guardrails Playbook →](https://infrixo.gumroad.com/l/rag-guardrails)**
+
+The Core Playbook is free. The full implementation kit (Labs A–G) 
+is $39.
+
 *Built by [Infrixo Systems](https://infrixo.com) · [hello@infrixo.com](mailto:hello@infrixo.com)*
