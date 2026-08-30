@@ -4,7 +4,7 @@ Most RAG systems look fine in demos. This tells you where yours breaks — befor
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/infrixo-systems/rag-evaluation-starter/blob/main/notebooks/rag_eval_walkthrough.ipynb)
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/infrixo-systems/rag-evaluation-starter/blob/main/notebook/rag_eval_walkthrough.ipynb)
 [![Last Commit](https://img.shields.io/github/last-commit/infrixo-systems/rag-evaluation-starter)](https://github.com/infrixo-systems/rag-evaluation-starter/commits/main)
 
 ---
