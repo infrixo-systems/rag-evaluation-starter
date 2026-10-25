@@ -255,4 +255,6 @@ and 7 executed Jupyter notebooks.
 The Core Playbook is free. The full implementation kit (Labs A–G) 
 is $39.
 
-*Built by [Infrixo Systems](https://infrixo.com) · [hello@infrixo.com](mailto:hello@infrixo.com)*
+*Built by 
+[Infrixo Systems](https://infrixo.com/?utm_source=github&utm_medium=readme&utm_campaign=rag-eval)
+ · [hello@infrixo.com](mailto:hello@infrixo.com)*
