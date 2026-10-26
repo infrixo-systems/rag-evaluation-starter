@@ -27,6 +27,9 @@ Five metrics in a single run. No SaaS. No signup. No mandatory API key.
 
 ## Quickstart
 
+New here? Follow the [step-by-step getting started guide](GETTING_STARTED.md). For score interpretation and limitations, see the [metrics guide](METRICS.md).
+
+
 ```bash
 git clone https://github.com/infrixo-systems/rag-evaluation-starter.git
 cd rag-evaluation-starter
@@ -127,7 +130,7 @@ The `examples/golden_set.json` file in this repo uses a fictional billing API as
 | 0.5 – 0.8 | Some queries miss the right chunk | Adjust chunk size or embedding model |
 | < 0.5 | Retrieval is broken for many queries | Fix retrieval before touching generation |
 
-A Recall@3 of 0.6 means 40% of questions didn't surface the right source. No prompt engineering will fix that — your generator is being asked to answer from wrong context.
+A mean Recall@3 of 0.6 means the average per-question retrieval recall is 60%, not necessarily that 40% of questions failed retrieval. See [METRICS.md](METRICS.md) for interpretation.
 
 ### Faithfulness vs Relevance
 

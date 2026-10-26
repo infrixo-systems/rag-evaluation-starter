@@ -1,0 +1,54 @@
+name: Evaluation tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run no-key CLI example
+        run: |
+          mkdir -p results
+          python rag_eval.py --golden examples/golden_set.json --no-embeddings --csv --output results/ci-smoke
+
+      - name: Check unanswerable-case behavior
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("results/ci-smoke.json").read_text(encoding="utf-8"))
+          summary = data["summary"]
+          q007 = next(x for x in data["results"] if x["id"] == "q007")
+          metric = q007["metrics"]["retrieval_recall_at_k"]
+
+          assert summary["n_questions"] == 8
+          assert summary["metric_counts"]["retrieval_recall_at_k"] == 7
+          assert metric["score"] is None
+          assert metric["verdict"] == "SKIP"
+          assert Path("results/ci-smoke.csv").is_file()
+          print("Example golden set and SKIP semantics verified")
+          PY
