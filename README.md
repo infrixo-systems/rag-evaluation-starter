@@ -30,14 +30,20 @@ Five metrics in a single run. No SaaS. No signup. No mandatory API key.
 New here? Follow the [step-by-step getting started guide](GETTING_STARTED.md). For score interpretation and limitations, see the [metrics guide](METRICS.md).
 
 
+macOS / Linux (Windows: see [GETTING_STARTED.md](GETTING_STARTED.md)):
+
 ```bash
 git clone https://github.com/infrixo-systems/rag-evaluation-starter.git
 cd rag-evaluation-starter
-pip install -r requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 python rag_eval.py --golden examples/golden_set.json --no-embeddings
 ```
 
-You'll see a colour-coded table in your terminal within seconds. No configuration needed.
+This runs the bundled demo (a mock retriever and generator over a fictional billing API) with no API key. You'll see a colour-coded table in your terminal, and the results are written to `results/results.json`. [`examples/sample_output.json`](examples/sample_output.json) shows the expected JSON.
+
+The CLI only runs this bundled demo, and it rejects any other `--golden` file. To evaluate your own system and golden set, use the Python API ([How to plug in your own system](#how-to-plug-in-your-own-system)).
 
 To include the cosine-similarity relevance metric (requires ~400 MB model download on first run):
 
@@ -207,17 +213,19 @@ This tool intentionally covers the minimum viable eval for a team that has nothi
 python rag_eval.py --golden PATH [options]
 
 Required:
-  --golden PATH         Path to golden_set.json
+  --golden PATH         Path to the bundled examples/golden_set.json
 
 Options:
   --k INT               Top-K for retrieval recall (default: 3)
-  --output PATH         Output path prefix (default: results)
+  --output PATH         Output path prefix (default: results/results -> results/results.json)
   --csv                 Also export results as CSV
   --llm-judge           Enable LLM-as-judge scoring
   --judge-model MODEL   Model for LLM judge (default: gpt-4o-mini)
   --no-embeddings       Skip cosine-similarity relevance metric
   --no-json             Skip saving results.json
 ```
+
+The CLI runs only the bundled demo pipeline (`examples/mock_retriever.py`). Any `--golden` file other than the bundled `examples/golden_set.json`, including an edited copy, is rejected with exit code 2, and no results are written. For your own data, use the [Python API](#how-to-plug-in-your-own-system).
 
 ---
 

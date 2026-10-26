@@ -2,44 +2,57 @@
   "summary": {
     "n_questions": 8,
     "mean_scores": {
-      "retrieval_recall_at_k": 0.75,
+      "retrieval_recall_at_k": 0.7143,
       "answer_faithfulness": 0.6875,
       "exact_match": 0.25,
       "token_f1": 0.8194
     },
+    "metric_counts": {
+      "retrieval_recall_at_k": 7,
+      "answer_faithfulness": 8,
+      "answer_relevance": 0,
+      "exact_match": 8,
+      "token_f1": 8
+    },
     "verdicts": {
       "retrieval_recall_at_k": {
-        "PASS": 7,
+        "PASS": 6,
         "WARN": 0,
         "FAIL": 1,
-        "SKIP": 0
+        "SKIP": 1,
+        "ERROR": 0
       },
       "answer_faithfulness": {
         "PASS": 6,
         "WARN": 2,
         "FAIL": 0,
-        "SKIP": 0
+        "SKIP": 0,
+        "ERROR": 0
       },
       "answer_relevance": {
         "PASS": 0,
         "WARN": 0,
         "FAIL": 0,
-        "SKIP": 8
+        "SKIP": 8,
+        "ERROR": 0
       },
       "exact_match": {
         "PASS": 2,
         "WARN": 0,
         "FAIL": 6,
-        "SKIP": 0
+        "SKIP": 0,
+        "ERROR": 0
       },
       "token_f1": {
         "PASS": 8,
         "WARN": 0,
         "FAIL": 0,
-        "SKIP": 0
+        "SKIP": 0,
+        "ERROR": 0
       }
     },
-    "avg_latency_s": 0.0
+    "avg_latency_s": 0.0,
+    "incomplete": {}
   },
   "results": [
     {
@@ -92,8 +105,8 @@
       },
       "latency": {
         "retrieval_s": 0.0,
-        "generation_s": 0.001,
-        "total_s": 0.001
+        "generation_s": 0.0,
+        "total_s": 0.0
       }
     },
     {
@@ -389,9 +402,9 @@
       ],
       "metrics": {
         "retrieval_recall_at_k": {
-          "score": 1.0,
+          "score": null,
           "k": 3,
-          "verdict": "PASS"
+          "verdict": "SKIP"
         },
         "answer_faithfulness": {
           "score": 0.381,

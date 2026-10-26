@@ -4,13 +4,19 @@ rag-evaluation-starter
 Evaluate any RAG pipeline against a golden set in under 30 minutes.
 No SaaS. No signup. Pure Python.
 
-Usage:
-    python rag_eval.py --golden examples/golden_set.json
+Usage (bundled demo):
+    python rag_eval.py --golden examples/golden_set.json --no-embeddings
     python rag_eval.py --golden examples/golden_set.json --k 5 --llm-judge
     python rag_eval.py --golden examples/golden_set.json --csv --output results/run1
 
-Plug in your own retriever and generator at the bottom of this file,
-or import and call evaluate() directly from your own code.
+The CLI runs only the bundled demo: the mock retriever + generator in
+examples/mock_retriever.py against examples/golden_set.json. Any other
+--golden file is rejected (exit code 2), because scoring it against the
+demo knowledge base would produce meaningless results.
+
+To evaluate your own RAG system and golden set, import rag_eval and call
+evaluate() with your own retriever and generator (README: "How to plug in
+your own system").
 """
 from __future__ import annotations
 
@@ -996,15 +1002,29 @@ def _warn(msg: str) -> None:
 # 14. CLI
 # ─────────────────────────────────────────────
 
+BUNDLED_GOLDEN = Path(__file__).resolve().parent / "examples" / "golden_set.json"
+
+
+def _is_bundled_golden(path: str) -> bool:
+    """True if `path` is the bundled example file (by file identity, not path text)."""
+    try:
+        return os.path.samefile(path, BUNDLED_GOLDEN)
+    except OSError:
+        return False
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Evaluate a RAG pipeline against a golden set.",
+        description="Evaluate the bundled demo RAG pipeline against its golden set.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--golden",       required=True,          help="Path to golden_set.json")
+    p.add_argument("--golden",       required=True,
+                   help="Path to the bundled examples/golden_set.json (the CLI runs only the demo "
+                        "pipeline; use the Python API for your own golden set)")
     p.add_argument("--k",            type=int, default=3,    help="Top-K for retrieval recall (default: 3)")
-    p.add_argument("--output",       default="results/results",      help="Output path prefix (default: results)")
+    p.add_argument("--output",       default="results/results",
+                   help="Output path prefix (default: results/results -> results/results.json)")
     p.add_argument("--csv",          action="store_true",    help="Also export results as CSV")
     p.add_argument("--llm-judge",    action="store_true",    help="Enable LLM-as-judge (requires API key)")
     p.add_argument("--judge-model",  default="gpt-4o-mini",  help="Model for LLM judge (default: gpt-4o-mini)")
@@ -1015,6 +1035,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _build_parser().parse_args()
+
+    # The CLI is demo-only: refuse to score another golden set against the mock
+    # knowledge base. A missing path falls through to load_golden_set's error.
+    if Path(args.golden).exists() and not _is_bundled_golden(args.golden):
+        print(
+            f"Error: --golden {args.golden} is not the bundled examples/golden_set.json.\n"
+            "  This CLI runs only the bundled demo pipeline (mock retriever + generator in\n"
+            "  examples/mock_retriever.py), which can only answer the bundled example questions.\n"
+            "  Scoring another golden set against it would give meaningless results, so nothing\n"
+            "  was evaluated or written.\n"
+            "  To evaluate your own golden set, call rag_eval.evaluate() from Python with your own\n"
+            "  retriever and generator: see \"How to plug in your own system\" in README.md.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     _log(f"Loading golden set: {args.golden}")
     golden = load_golden_set(args.golden)
