@@ -58,6 +58,7 @@
     "question": "What is the refund policy for seats that were accidentally provisioned by a script bug?",
     "expected_answer": "The knowledge base does not contain a refund policy for programmatic over-provisioning. Please contact support at support@vanta.example.com.",
     "expected_source_ids": [],
+    "answerable": false,
     "category": "billing",
     "difficulty": "adversarial",
     "notes": "The answer is NOT in the knowledge base. A well-behaved RAG system should say it cannot find the information rather than hallucinate a policy."

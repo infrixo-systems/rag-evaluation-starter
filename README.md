@@ -81,7 +81,21 @@ The `embedder_fn` parameter is optional — it defaults to `sentence-transformer
 
 ## How to build your golden set
 
+
 This is the section most teams skip — and why most RAG evals are useless.
+
+**Unanswerable cases:** For a question whose answer is absent from the knowledge base,
+set `"answerable": false` and `"expected_source_ids": []`. Other questions default
+to `answerable: true` and must list at least one expected source ID.
+
+Retrieval Recall@K is **N/A / SKIP** for unanswerable questions and excluded from
+the retrieval-recall mean; they remain included in other evaluation metrics.
+The output JSON summary includes `metric_counts` to show each metric's denominator.
+Abstention behavior is not independently graded by this change.
+
+**Breaking change:** Existing golden sets containing an empty `expected_source_ids` list
+for an answerable question now fail validation. For intentionally unanswerable cases,
+set `"answerable": false`; otherwise, provide at least one expected source ID.
 
 **Start with your support tickets.** The questions users ask when things go wrong are exactly the queries your system needs to handle. Look at the last 3 months. Pull out 30–50 questions that were hard to answer or answered incorrectly.
 
