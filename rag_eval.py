@@ -92,18 +92,36 @@ def load_golden_set(path: str) -> list[GoldenEntry]:
         raise ValueError("Golden set must be a JSON array of objects.")
 
     for i, entry in enumerate(data):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Entry #{i} must be an object.")
         missing = REQUIRED_FIELDS - set(entry.keys())
         if missing:
             raise ValueError(
                 f"Entry #{i} (id={entry.get('id', '?')}) is missing required fields: {missing}\n"
                 f"Required fields: {REQUIRED_FIELDS}"
             )
-        if not isinstance(entry["expected_source_ids"], list):
+        sources = entry["expected_source_ids"]
+        if not isinstance(sources, list):
             raise ValueError(
                 f"Entry #{i}: expected_source_ids must be a list, got "
-                f"{type(entry['expected_source_ids']).__name__}"
+                f"{type(sources).__name__}"
             )
-
+        answerable = entry.get("answerable", True)
+        if not isinstance(answerable, bool):
+            raise ValueError(f"Entry #{i}: answerable must be true or false.")
+        if any(not isinstance(s, str) or not s.strip() for s in sources):
+            raise ValueError(f"Entry #{i}: expected_source_ids must contain non-empty strings.")
+        if len(set(sources)) != len(sources):
+            raise ValueError(f"Entry #{i}: expected_source_ids must not contain duplicates.")
+        if answerable and not sources:
+            raise ValueError(
+                f"Entry #{i}: answerable question requires expected_source_ids; "
+                "set answerable=false for an intentionally unanswerable question."
+            )
+        if not answerable and sources:
+            raise ValueError(
+                f"Entry #{i}: unanswerable question must have empty expected_source_ids."
+            )
     return data
 
 
@@ -172,14 +190,14 @@ def metric_retrieval_recall(
     retrieved_docs: list[RetrievedDoc],
     expected_source_ids: list[str],
     k: int,
-) -> float:
+) -> Optional[float]:
     """
-    Retrieval Recall@K
-    Did the right source(s) appear in the top-K results?
+    Retrieval Recall@K for questions with expected sources.
+    Returns None (not applicable) when there are no expected sources.
     Score = (# expected sources found in top-K) / (# expected sources)
     """
     if not expected_source_ids:
-        return 1.0
+        return None
     top_k_ids = {d["source_id"] for d in retrieved_docs[:k]}
     hits = sum(1 for sid in expected_source_ids if sid in top_k_ids)
     return hits / len(expected_source_ids)
@@ -449,9 +467,9 @@ def evaluate(
             "retrieved_chunks": retrieved,
             "metrics": {
                 "retrieval_recall_at_k": {
-                    "score":   round(rec_at_k, 4),
+                    "score":   round(rec_at_k, 4) if rec_at_k is not None else None,
                     "k":       k,
-                    "verdict": verdict("retrieval_recall", rec_at_k),
+                    "verdict": verdict("retrieval_recall", rec_at_k) if rec_at_k is not None else "SKIP",
                 },
                 "answer_faithfulness": {
                     "score":   round(faith, 4),
@@ -535,6 +553,7 @@ def summarise(results: list[EvalResult]) -> dict:
     return {
         "n_questions":   len(rows),
         "mean_scores":   means,
+        "metric_counts": {mk: len(totals[mk]) for mk in metric_keys},
         "verdicts":      verdicts,
         "avg_latency_s": avg_latency,
     }
@@ -548,9 +567,15 @@ VERDICT_STYLE = {"PASS": "bold green", "WARN": "bold yellow", "FAIL": "bold red"
 
 def _verdict_cell(v: str, score) -> "Text":
     from rich.text import Text
-    score_str = f"{score:.2f}" if isinstance(score, float) else "—"
+    score_str = f"{score:.2f}" if isinstance(score, float) else "N/A"
     label = f"{score_str} {v}"
     return Text(label, style=VERDICT_STYLE.get(v, ""))
+
+
+def _mean_cell(metric_name: str, score) -> "Text":
+    return _verdict_cell(
+        verdict(metric_name, score) if score is not None else "SKIP", score
+    )
 
 
 def print_rich_table(results: list[EvalResult], summary: dict) -> None:
@@ -598,11 +623,11 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
         table.add_section()
         table.add_row(
             "[bold]MEAN[/bold]", "", "",
-            _verdict_cell(verdict("retrieval_recall",   ms.get("retrieval_recall_at_k", 0)),   ms.get("retrieval_recall_at_k",   0.0)),
-            _verdict_cell(verdict("answer_faithfulness", ms.get("answer_faithfulness",  0)),   ms.get("answer_faithfulness",     0.0)),
-            _verdict_cell(verdict("answer_relevance",   ms.get("answer_relevance",      0)),   ms.get("answer_relevance",        0.0)),
-            _verdict_cell(verdict("token_f1",           ms.get("token_f1",              0)),   ms.get("token_f1",                0.0)),
-            _verdict_cell(verdict("exact_match",        ms.get("exact_match",           0)),   ms.get("exact_match",             0.0)),
+            _mean_cell("retrieval_recall",   ms.get("retrieval_recall_at_k")),
+            _mean_cell("answer_faithfulness", ms.get("answer_faithfulness")),
+            _mean_cell("answer_relevance",   ms.get("answer_relevance")),
+            _mean_cell("token_f1",           ms.get("token_f1")),
+            _mean_cell("exact_match",        ms.get("exact_match")),
             f"{summary['avg_latency_s']:.2f}s",
         )
 
@@ -619,6 +644,10 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
         )
 
 
+def _format_optional_score(score, width: int) -> str:
+    return f"{score:>{width}.2f}" if score is not None else f"{'N/A':>{width}}"
+
+
 def _print_plain_table(results: list[EvalResult], summary: dict) -> None:
     """Fallback plain-text table when Rich is not installed."""
     rows = [r for r in results if not r.get("_summary")]
@@ -631,21 +660,26 @@ def _print_plain_table(results: list[EvalResult], summary: dict) -> None:
         m  = r["metrics"]
         ra = m["retrieval_recall_at_k"]["score"]
         fa = m["answer_faithfulness"]["score"]
-        re = m["answer_relevance"]["score"] or 0.0
+        re = m["answer_relevance"]["score"]
         f1 = m["token_f1"]["score"]
         em = m["exact_match"]["score"]
         la = r["latency"]["total_s"]
-        print(f"{str(r['id']):<10} {ra:>9.2f} {fa:>9.2f} {re:>10.2f} {f1:>9.2f} {em:>6.2f} {la:>7.2f}s")
+        print(
+            f"{str(r['id']):<10} {_format_optional_score(ra, 9)} "
+            f"{_format_optional_score(fa, 9)} {_format_optional_score(re, 10)} "
+            f"{_format_optional_score(f1, 9)} {_format_optional_score(em, 6)} "
+            f"{la:>7.2f}s"
+        )
     if summary:
         ms = summary["mean_scores"]
         print("-" * len(header))
         print(
             f"{'MEAN':<10} "
-            f"{ms.get('retrieval_recall_at_k', 0):>9.2f} "
-            f"{ms.get('answer_faithfulness', 0):>9.2f} "
-            f"{ms.get('answer_relevance', 0):>10.2f} "
-            f"{ms.get('token_f1', 0):>9.2f} "
-            f"{ms.get('exact_match', 0):>6.2f} "
+            f"{_format_optional_score(ms.get('retrieval_recall_at_k'), 9)} "
+            f"{_format_optional_score(ms.get('answer_faithfulness'), 9)} "
+            f"{_format_optional_score(ms.get('answer_relevance'), 10)} "
+            f"{_format_optional_score(ms.get('token_f1'), 9)} "
+            f"{_format_optional_score(ms.get('exact_match'), 6)} "
             f"{summary['avg_latency_s']:>7.2f}s"
         )
     print()
