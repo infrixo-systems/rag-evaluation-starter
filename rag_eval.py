@@ -28,7 +28,7 @@ THRESHOLDS = {
 # Cost per 1k tokens (USD) — used for LLM-judge cost estimate
 LLM_COST_PER_1K = {
     "gpt-4o-mini":      {"input": 0.00015, "output": 0.0006},
-    "claude-haiku-4-5-20251001": {"input": 0.00025, "output": 0.00125},
+    "claude-haiku-4-5-20251001": {"input": 0.001,   "output": 0.005},
 }
 
 # ─────────────────────────────────────────────
@@ -39,6 +39,7 @@ import csv
 import json
 import os
 import string
+import sys
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -288,6 +289,74 @@ Context:
 Answer: {answer}"""
 
 
+# Supported judge models -> (provider, required API key env var).
+# The requested model is always the model called: no provider/model fallback.
+JUDGE_MODELS = {
+    "gpt-4o-mini":               ("openai",    "OPENAI_API_KEY"),
+    "claude-haiku-4-5-20251001": ("anthropic", "ANTHROPIC_API_KEY"),
+}
+
+
+class JudgeConfigError(RuntimeError):
+    """LLM judge requested, but the model is unsupported or its API key is not set."""
+
+
+def _resolve_judge(model: str) -> str:
+    """Return the provider for `model`, or raise JudgeConfigError. Never substitutes a model."""
+    if model not in JUDGE_MODELS:
+        raise JudgeConfigError(
+            f"Unsupported judge model {model!r}. Supported: {', '.join(JUDGE_MODELS)}."
+        )
+    provider, key_var = JUDGE_MODELS[model]
+    if not os.environ.get(key_var):
+        raise JudgeConfigError(
+            f"LLM judge model {model!r} requires {key_var}, which is not set (no usable API key). "
+            "Set it, choose another --judge-model, or run without --llm-judge."
+        )
+    return provider
+
+
+def new_judge_tracker() -> dict:
+    """
+    Judge usage accounting. Estimated and provider-reported usage are kept apart:
+      calls_succeeded / calls_failed : provider request outcome (usage may be billed on success)
+      calls_scored                   : request succeeded AND the reply passed validation
+      invalid_responses              : request succeeded but the reply was unusable
+      estimated_prompt_tokens        : local tiktoken estimate (None if the tokenizer failed)
+      input_tokens / output_tokens   : provider-reported usage, successful requests only
+    """
+    return {
+        "model_used": None,
+        "calls_attempted": 0,
+        "calls_succeeded": 0,
+        "calls_failed": 0,
+        "calls_scored": 0,
+        "invalid_responses": 0,
+        "estimated_prompt_tokens": 0,
+        "estimate_error": None,
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }
+
+
+def _validate_judge_response(parsed) -> dict:
+    """Return the expected judge structure (extra keys dropped), or raise ValueError."""
+    if not isinstance(parsed, dict):
+        raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+    out = {}
+    for dim in ("faithfulness", "relevance"):
+        item = parsed.get(dim)
+        if not isinstance(item, dict):
+            raise ValueError(f"missing or non-object {dim!r}")
+        score, reason = item.get("score"), item.get("reason")
+        if isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5:
+            raise ValueError(f"{dim}.score must be an integer 1-5, got {score!r}")
+        if not isinstance(reason, str):
+            raise ValueError(f"{dim}.reason must be a string, got {type(reason).__name__}")
+        out[dim] = {"score": score, "reason": reason}
+    return out
+
+
 def llm_judge(
     question: str,
     answer: str,
@@ -298,22 +367,38 @@ def llm_judge(
     """
     Call OpenAI or Anthropic to score faithfulness and relevance (1–5).
     Returns dict with scores and reasons, or error info.
+    token_tracker must come from new_judge_tracker().
     """
+    try:
+        provider = _resolve_judge(model)
+    except JudgeConfigError as e:
+        return {"error": str(e)}
+
     context_text = "\n---\n".join(context_chunks[:5])  # cap context length
     user_msg = JUDGE_USER_TEMPLATE.format(
         question=question,
         context=context_text,
         answer=answer,
     )
-    prompt_tokens  = _tiktoken_count(JUDGE_SYSTEM_PROMPT + user_msg)
-    token_tracker["input_tokens"] += prompt_tokens
+    token_tracker["model_used"] = model
+    token_tracker["calls_attempted"] += 1
 
-    # ── OpenAI path ──────────────────────────────────────────
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if openai_key and model in ("gpt-4o-mini",):
+    # The estimate is informational only: a tokenizer failure must not stop the run.
+    if token_tracker["estimate_error"] is None:
         try:
+            token_tracker["estimated_prompt_tokens"] += _tiktoken_count(JUDGE_SYSTEM_PROMPT + user_msg)
+        except Exception as e:
+            token_tracker["estimate_error"] = f"{type(e).__name__}: {e}"
+            token_tracker["estimated_prompt_tokens"] = None
+            _warn(
+                f"judge prompt-token estimate unavailable ({token_tracker['estimate_error'].splitlines()[0]}); "
+                "continuing without it. Provider-reported usage is unaffected."
+            )
+
+    try:
+        if provider == "openai":
             import openai
-            client = openai.OpenAI(api_key=openai_key)
+            client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -325,41 +410,50 @@ def llm_judge(
                 response_format={"type": "json_object"},
             )
             raw = response.choices[0].message.content
+            in_tokens  = response.usage.prompt_tokens
             out_tokens = response.usage.completion_tokens
-            token_tracker["output_tokens"] += out_tokens
-            return json.loads(raw)
-        except Exception as e:
-            return {"error": str(e)}
-
-    # ── Anthropic path ────────────────────────────────────────
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    if anthropic_key:
-        try:
+        else:
             import anthropic
-            client = anthropic.Anthropic(api_key=anthropic_key)
+            client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=model,
                 max_tokens=200,
                 system=JUDGE_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_msg}],
             )
             raw = response.content[0].text
+            in_tokens  = response.usage.input_tokens
             out_tokens = response.usage.output_tokens
-            token_tracker["output_tokens"] += out_tokens
-            return json.loads(raw)
-        except Exception as e:
-            return {"error": str(e)}
+    except Exception as e:
+        token_tracker["calls_failed"] += 1
+        return {"error": f"{type(e).__name__}: {e}"}
 
-    return {"error": "No API key found. Set OPENAI_API_KEY or ANTHROPIC_API_KEY."}
+    # The request succeeded, so its usage counts even if the reply is unusable;
+    # only a validated reply counts as scored.
+    token_tracker["calls_succeeded"] += 1
+    token_tracker["input_tokens"]  += in_tokens
+    token_tracker["output_tokens"] += out_tokens
+    try:
+        scores = _validate_judge_response(json.loads(raw))
+    except (ValueError, TypeError) as e:
+        token_tracker["invalid_responses"] += 1
+        return {"error": f"Invalid judge response: {e}"}
+    token_tracker["calls_scored"] += 1
+    return scores
 
 
 # ─────────────────────────────────────────────
 # 6. LATENCY + COST TRACKING
 # ─────────────────────────────────────────────
 
-def estimate_cost(token_tracker: dict, model: str) -> float:
-    """Estimate USD cost from token counts."""
-    rates = LLM_COST_PER_1K.get(model, {"input": 0.0, "output": 0.0})
+def estimate_cost(token_tracker: dict, model: str) -> Optional[float]:
+    """
+    Estimate USD cost from token counts at list price.
+    This is an estimate, not a bill. Returns None if the model has no known price.
+    """
+    rates = LLM_COST_PER_1K.get(model)
+    if rates is None:
+        return None
     input_cost  = token_tracker.get("input_tokens",  0) / 1000 * rates["input"]
     output_cost = token_tracker.get("output_tokens", 0) / 1000 * rates["output"]
     return input_cost + output_cost
@@ -377,6 +471,19 @@ def verdict(metric_name: str, score: float) -> str:
     if score >= t["fail"]:
         return "WARN"
     return "FAIL"
+
+
+def _relevance_metric(score: Optional[float], error: Optional[str]) -> dict:
+    """Relevance result: ERROR (embedder failed) is kept distinct from SKIP (not requested)."""
+    if error is not None:
+        return {"score": None, "method": "error", "verdict": "ERROR", "error": error}
+    if score is None:
+        return {"score": None, "method": "skipped", "verdict": "SKIP"}
+    return {
+        "score":   round(score, 4),
+        "method":  "cosine_similarity",
+        "verdict": verdict("answer_relevance", score),
+    }
 
 
 # ─────────────────────────────────────────────
@@ -410,9 +517,19 @@ def evaluate(
     Returns
     -------
     list of per-question result dicts
+
+    Raises
+    ------
+    JudgeConfigError if use_llm_judge is set but no usable API key is configured.
     """
+    if use_llm_judge:
+        _resolve_judge(llm_judge_model)   # fail before running the pipeline
+
     results = []
-    token_tracker = {"input_tokens": 0, "output_tokens": 0}
+    token_tracker = new_judge_tracker()
+    # After the first embedder failure, relevance is disabled for the rest of the
+    # run (no re-initialising a broken model per question) and reported as ERROR.
+    embedding_error: Optional[str] = None
 
     for entry in golden_set:
         qid      = entry["id"]
@@ -439,22 +556,39 @@ def evaluate(
         em       = metric_exact_match(answer, expected)
 
         relevance = None
-        if not no_embeddings:
+        if not no_embeddings and embedding_error is None:
             try:
                 relevance = metric_answer_relevance(question, answer, embedder_fn)
-            except Exception:
-                relevance = None   # if sentence-transformers not installed
+            except Exception as e:
+                embedding_error = f"{type(e).__name__}: {e}"
+                _warn(
+                    f"answer relevance failed on question {qid!r}: "
+                    f"{embedding_error.splitlines()[0]}\n"
+                    "  Relevance is disabled for the rest of this run and reported as ERROR "
+                    "(not SKIP). Fix the embedder, or use --no-embeddings to skip it intentionally."
+                )
 
         # ── LLM judge (optional) ──────────────────────────────
         judge_scores = None
+        judge_row_cost = None
+        judge_status = None
         if use_llm_judge:
+            before = dict(token_tracker)
             judge_scores = llm_judge(
                 question, answer, context_texts, llm_judge_model, token_tracker
             )
-
-        # ── Token count for cost tracking ─────────────────────
-        total_text = question + answer + " ".join(context_texts)
-        token_tracker["input_tokens"] += _tiktoken_count(total_text)
+            judge_row_cost = estimate_cost(
+                {t: token_tracker[t] - before[t] for t in ("input_tokens", "output_tokens")},
+                llm_judge_model,
+            )
+            if token_tracker["calls_scored"] > before["calls_scored"]:
+                judge_status = "scored"
+            elif token_tracker["invalid_responses"] > before["invalid_responses"]:
+                judge_status = "invalid_response"
+            elif token_tracker["calls_failed"] > before["calls_failed"]:
+                judge_status = "request_failed"
+            else:
+                judge_status = "not_attempted"
 
         # ── Assemble result ───────────────────────────────────
         result: EvalResult = {
@@ -476,11 +610,7 @@ def evaluate(
                     "method":  "token_overlap",
                     "verdict": verdict("answer_faithfulness", faith),
                 },
-                "answer_relevance": {
-                    "score":   round(relevance, 4) if relevance is not None else None,
-                    "method":  "cosine_similarity" if relevance is not None else "skipped",
-                    "verdict": verdict("answer_relevance", relevance) if relevance is not None else "SKIP",
-                },
+                "answer_relevance": _relevance_metric(relevance, embedding_error),
                 "exact_match": {
                     "score":   round(em, 4),
                     "verdict": verdict("exact_match", em),
@@ -501,19 +631,35 @@ def evaluate(
 
         if judge_scores:
             result["llm_judge"] = judge_scores
+            result["llm_judge_status"] = judge_status
+            result["_judge_estimated_cost_usd"] = (
+                round(judge_row_cost, 6) if judge_row_cost is not None else None
+            )
 
         results.append(result)
 
-    # ── Attach cost estimate if LLM judge was used ────────────
+    # ── Attach usage + cost estimate if LLM judge was used ────
     if use_llm_judge:
         cost = estimate_cost(token_tracker, llm_judge_model)
-        for r in results:
-            r["_judge_cost_usd"] = round(cost / len(results), 6)
         results.append({
             "_summary": True,
-            "llm_judge_total_cost_usd": round(cost, 4),
             "llm_judge_model": llm_judge_model,
-            "total_tokens": token_tracker,
+            "llm_judge_calls": {
+                "attempted":         token_tracker["calls_attempted"],
+                "request_succeeded": token_tracker["calls_succeeded"],
+                "request_failed":    token_tracker["calls_failed"],
+                "scored":            token_tracker["calls_scored"],
+                "invalid_response":  token_tracker["invalid_responses"],
+            },
+            # Provider-reported usage from successful requests only.
+            "llm_judge_usage": {
+                "input_tokens":  token_tracker["input_tokens"],
+                "output_tokens": token_tracker["output_tokens"],
+            },
+            "llm_judge_estimated_prompt_tokens": token_tracker["estimated_prompt_tokens"],
+            "llm_judge_estimate_error": token_tracker["estimate_error"],
+            # List price x provider-reported usage. An estimate, not an invoice.
+            "llm_judge_estimated_cost_usd": round(cost, 6) if cost is not None else None,
         })
 
     return results
@@ -542,7 +688,7 @@ def summarise(results: list[EvalResult]) -> dict:
 
     verdicts: dict[str, dict] = {}
     for mk in metric_keys:
-        counts = {"PASS": 0, "WARN": 0, "FAIL": 0, "SKIP": 0}
+        counts = {"PASS": 0, "WARN": 0, "FAIL": 0, "SKIP": 0, "ERROR": 0}
         for r in rows:
             v = r["metrics"][mk]["verdict"]
             counts[v] = counts.get(v, 0) + 1
@@ -550,20 +696,49 @@ def summarise(results: list[EvalResult]) -> dict:
 
     avg_latency = round(sum(r["latency"]["total_s"] for r in rows) / len(rows), 3)
 
-    return {
+    # Anything not computed for every row it should have been. Empty == complete.
+    # status "partial": some rows have a result; "error": none do.
+    incomplete: dict[str, dict] = {}
+    rel_errors = verdicts["answer_relevance"]["ERROR"]
+    if rel_errors:
+        computed = len(totals["answer_relevance"])
+        incomplete["answer_relevance"] = {
+            "status":   "partial" if computed else "error",
+            "computed": computed,
+            "error":    rel_errors,
+        }
+    statuses = [r["llm_judge_status"] for r in rows if "llm_judge_status" in r]
+    scored = statuses.count("scored")
+    if scored < len(statuses):
+        incomplete["llm_judge"] = {
+            "status": "partial" if scored else "error",
+            "scored": scored,
+            **{s: statuses.count(s) for s in ("request_failed", "invalid_response", "not_attempted")
+               if s in statuses},
+        }
+
+    out = {
         "n_questions":   len(rows),
         "mean_scores":   means,
         "metric_counts": {mk: len(totals[mk]) for mk in metric_keys},
         "verdicts":      verdicts,
         "avg_latency_s": avg_latency,
+        "incomplete":    incomplete,
     }
+    judge = next((r for r in results if r.get("_summary")), None)
+    if judge:
+        out["llm_judge"] = {k: v for k, v in judge.items() if k != "_summary"}
+    return out
 
 
 # ─────────────────────────────────────────────
 # 10. OUTPUT — RICH TABLE
 # ─────────────────────────────────────────────
 
-VERDICT_STYLE = {"PASS": "bold green", "WARN": "bold yellow", "FAIL": "bold red", "SKIP": "dim"}
+VERDICT_STYLE = {
+    "PASS": "bold green", "WARN": "bold yellow", "FAIL": "bold red",
+    "SKIP": "dim", "ERROR": "bold magenta", "PARTIAL": "bold magenta",
+}
 
 def _verdict_cell(v: str, score) -> "Text":
     from rich.text import Text
@@ -572,9 +747,48 @@ def _verdict_cell(v: str, score) -> "Text":
     return Text(label, style=VERDICT_STYLE.get(v, ""))
 
 
-def _mean_cell(metric_name: str, score) -> "Text":
-    return _verdict_cell(
-        verdict(metric_name, score) if score is not None else "SKIP", score
+def _mean_cell(metric_name: str, score, status: Optional[str] = None) -> "Text":
+    """status comes from summary["incomplete"]: "partial" or "error" (None == complete)."""
+    if status == "error":
+        return _verdict_cell("ERROR", None)
+    if status == "partial":
+        return _verdict_cell("PARTIAL", score)
+    if score is None:
+        return _verdict_cell("SKIP", score)
+    return _verdict_cell(verdict(metric_name, score), score)
+
+
+def _incomplete_lines(summary: dict) -> list[str]:
+    """Human-readable notes for every metric in summary["incomplete"]."""
+    lines = []
+    n = summary.get("n_questions", 0)
+    rel = summary.get("incomplete", {}).get("answer_relevance")
+    if rel and rel["status"] == "partial":
+        lines.append(
+            f"answer_relevance: PARTIAL — computed for {rel['computed']}/{n} rows, ERROR on "
+            f"{rel['error']}; the mean covers only the computed rows."
+        )
+    elif rel:
+        lines.append(f"answer_relevance: ERROR — not computed for any row (0/{n}); no mean.")
+    judge = summary.get("incomplete", {}).get("llm_judge")
+    if judge:
+        detail = ", ".join(f"{k}={v}" for k, v in judge.items() if k not in ("status", "scored"))
+        label = "PARTIAL" if judge["status"] == "partial" else "ERROR"
+        lines.append(f"llm_judge: {label} — scored {judge['scored']}/{n} rows ({detail}).")
+    return lines
+
+
+def _judge_summary_text(j: dict) -> str:
+    calls = j["llm_judge_calls"]
+    cost = j["llm_judge_estimated_cost_usd"]
+    est = j["llm_judge_estimated_prompt_tokens"]
+    cost_str = f"~${cost:.4f}" if cost is not None else "unknown (no list price for model)"
+    return (
+        f"model={j['llm_judge_model']}  scored={calls['scored']}/{calls['attempted']}  "
+        f"requests_succeeded={calls['request_succeeded']}/{calls['attempted']}  "
+        f"reported_tokens={j['llm_judge_usage']}  "
+        f"estimated_prompt_tokens={est if est is not None else 'unavailable'}  "
+        f"estimated_cost={cost_str} (list price × provider-reported usage; not a bill)"
     )
 
 
@@ -605,13 +819,14 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
 
     for r in rows:
         m = r["metrics"]
+        rel = m["answer_relevance"]
         table.add_row(
             str(r["id"]),
             str(r.get("category", "—"))[:10],
             str(r.get("difficulty", "—"))[:5],
             _verdict_cell(m["retrieval_recall_at_k"]["verdict"], m["retrieval_recall_at_k"]["score"]),
             _verdict_cell(m["answer_faithfulness"]["verdict"],   m["answer_faithfulness"]["score"]),
-            _verdict_cell(m["answer_relevance"]["verdict"],      m["answer_relevance"]["score"] or 0.0),
+            _verdict_cell(rel["verdict"], 0.0 if rel["verdict"] == "SKIP" else rel["score"]),
             _verdict_cell(m["token_f1"]["verdict"],              m["token_f1"]["score"]),
             _verdict_cell(m["exact_match"]["verdict"],           m["exact_match"]["score"]),
             f"{r['latency']['total_s']:.2f}s",
@@ -625,7 +840,8 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
             "[bold]MEAN[/bold]", "", "",
             _mean_cell("retrieval_recall",   ms.get("retrieval_recall_at_k")),
             _mean_cell("answer_faithfulness", ms.get("answer_faithfulness")),
-            _mean_cell("answer_relevance",   ms.get("answer_relevance")),
+            _mean_cell("answer_relevance",   ms.get("answer_relevance"),
+                       summary.get("incomplete", {}).get("answer_relevance", {}).get("status")),
             _mean_cell("token_f1",           ms.get("token_f1")),
             _mean_cell("exact_match",        ms.get("exact_match")),
             f"{summary['avg_latency_s']:.2f}s",
@@ -633,15 +849,16 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
 
     console.print(table)
 
-    # LLM judge cost
-    cost_rows = [r for r in results if r.get("_summary")]
-    if cost_rows:
-        cr = cost_rows[0]
-        console.print(
-            f"\n[bold cyan]LLM Judge[/bold cyan] model={cr['llm_judge_model']}  "
-            f"total_cost=${cr['llm_judge_total_cost_usd']:.4f}  "
-            f"tokens={cr['total_tokens']}"
-        )
+    # LLM judge usage + estimated cost
+    if summary and "llm_judge" in summary:
+        console.print(Text.assemble(("\nLLM Judge ", "bold cyan"), _judge_summary_text(summary["llm_judge"])))
+
+    # Incomplete metrics
+    notes = _incomplete_lines(summary) if summary else []
+    if notes:
+        console.print(Text("\nINCOMPLETE RESULTS", style="bold magenta"))
+        for line in notes:
+            console.print(Text(f"  {line}", style="magenta"))
 
 
 def _format_optional_score(score, width: int) -> str:
@@ -682,6 +899,13 @@ def _print_plain_table(results: list[EvalResult], summary: dict) -> None:
             f"{_format_optional_score(ms.get('exact_match'), 6)} "
             f"{summary['avg_latency_s']:>7.2f}s"
         )
+        if "llm_judge" in summary:
+            print(f"\nLLM Judge {_judge_summary_text(summary['llm_judge'])}")
+        notes = _incomplete_lines(summary)
+        if notes:
+            print("\nINCOMPLETE RESULTS")
+            for line in notes:
+                print(f"  {line}")
     print()
 
 
@@ -718,7 +942,12 @@ def save_csv(results: list[EvalResult], output_path: str) -> None:
         "exact_match", "token_f1", "token_precision", "token_recall",
         "retrieval_latency_s", "generation_latency_s", "total_latency_s",
         "generated_answer",
+        # Distinguishes a blank relevance cell: cosine_similarity / skipped / error.
+        "answer_relevance_method",
     ]
+    judged = any("llm_judge_status" in r for r in rows)
+    if judged:
+        fieldnames += ["llm_judge_status", "judge_estimated_cost_usd"]
 
     with open(p, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -741,6 +970,9 @@ def save_csv(results: list[EvalResult], output_path: str) -> None:
                 "generation_latency_s":  r["latency"]["generation_s"],
                 "total_latency_s":       r["latency"]["total_s"],
                 "generated_answer":      r["generated_answer"],
+                "answer_relevance_method": m["answer_relevance"]["method"],
+                "llm_judge_status":      r.get("llm_judge_status", ""),
+                "judge_estimated_cost_usd": r.get("_judge_estimated_cost_usd", ""),
             })
     _log(f"CSV saved → {p}")
 
@@ -754,6 +986,10 @@ def _log(msg: str) -> None:
         console.print(f"[dim]{msg}[/dim]")
     else:
         print(msg)
+
+
+def _warn(msg: str) -> None:
+    print(f"Warning: {msg}", file=sys.stderr)
 
 
 # ─────────────────────────────────────────────
@@ -798,15 +1034,19 @@ def main() -> None:
         return
 
     _log("Running evaluation…\n")
-    results = evaluate(
-        golden_set     = golden,
-        retriever_fn   = retriever_fn,
-        generator_fn   = generator_fn,
-        k              = args.k,
-        use_llm_judge  = args.llm_judge,
-        llm_judge_model= args.judge_model,
-        no_embeddings  = args.no_embeddings,
-    )
+    try:
+        results = evaluate(
+            golden_set     = golden,
+            retriever_fn   = retriever_fn,
+            generator_fn   = generator_fn,
+            k              = args.k,
+            use_llm_judge  = args.llm_judge,
+            llm_judge_model= args.judge_model,
+            no_embeddings  = args.no_embeddings,
+        )
+    except JudgeConfigError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(2)
 
     summary = summarise(results)
     print_rich_table(results, summary)
@@ -817,6 +1057,13 @@ def main() -> None:
 
     if args.csv:
         save_csv(results, args.output + ".csv")
+
+    # Results are still written above; exit 1 flags that they are incomplete.
+    if summary and summary["incomplete"]:
+        for line in _incomplete_lines(summary):
+            _warn(line)
+        _warn("results are incomplete (see summary.incomplete in the JSON); exiting with status 1.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
