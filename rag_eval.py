@@ -813,7 +813,7 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
     )
     table.add_column("ID",         style="dim", width=8)
     table.add_column("Cat",        style="dim", width=10)
-    table.add_column("Diff",       style="dim", width=6)
+    table.add_column("Diff",       style="dim", width=11)
     table.add_column("Recall@K",   justify="center", width=12)
     table.add_column("Faithful",   justify="center", width=12)
     table.add_column("Relevance",  justify="center", width=12)
@@ -829,7 +829,7 @@ def print_rich_table(results: list[EvalResult], summary: dict) -> None:
         table.add_row(
             str(r["id"]),
             str(r.get("category", "—"))[:10],
-            str(r.get("difficulty", "—"))[:5],
+            str(r.get("difficulty", "—")),
             _verdict_cell(m["retrieval_recall_at_k"]["verdict"], m["retrieval_recall_at_k"]["score"]),
             _verdict_cell(m["answer_faithfulness"]["verdict"],   m["answer_faithfulness"]["score"]),
             _verdict_cell(rel["verdict"], 0.0 if rel["verdict"] == "SKIP" else rel["score"]),
@@ -954,6 +954,13 @@ def save_csv(results: list[EvalResult], output_path: str) -> None:
     judged = any("llm_judge_status" in r for r in rows)
     if judged:
         fieldnames += ["llm_judge_status", "judge_estimated_cost_usd"]
+    # Appended last so every earlier column keeps its position, judge run or not.
+    # Verdicts are PASS / WARN / FAIL / SKIP / ERROR, copied from the JSON row.
+    fieldnames += [
+        "retrieval_recall_at_k_verdict", "retrieval_k",
+        "answer_faithfulness_verdict", "answer_relevance_verdict",
+        "exact_match_verdict", "token_f1_verdict",
+    ]
 
     with open(p, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -979,6 +986,12 @@ def save_csv(results: list[EvalResult], output_path: str) -> None:
                 "answer_relevance_method": m["answer_relevance"]["method"],
                 "llm_judge_status":      r.get("llm_judge_status", ""),
                 "judge_estimated_cost_usd": r.get("_judge_estimated_cost_usd", ""),
+                "retrieval_recall_at_k_verdict": m["retrieval_recall_at_k"]["verdict"],
+                "retrieval_k":           m["retrieval_recall_at_k"]["k"],
+                "answer_faithfulness_verdict": m["answer_faithfulness"]["verdict"],
+                "answer_relevance_verdict":    m["answer_relevance"]["verdict"],
+                "exact_match_verdict":   m["exact_match"]["verdict"],
+                "token_f1_verdict":      m["token_f1"]["verdict"],
             })
     _log(f"CSV saved → {p}")
 

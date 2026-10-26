@@ -126,6 +126,14 @@ The JSON `summary.llm_judge` reports:
 
 Per row, `_judge_estimated_cost_usd` is that row's own estimate. The CSV adds `llm_judge_status` and `judge_estimated_cost_usd` columns when the judge is used.
 
+## CSV export
+
+The CSV keeps every score column (blank when there is no score) and then appends, after all other columns, one verdict per metric plus the retrieval `k`:
+
+`retrieval_recall_at_k_verdict`, `retrieval_k`, `answer_faithfulness_verdict`, `answer_relevance_verdict`, `exact_match_verdict`, `token_f1_verdict`
+
+Each verdict is the row's JSON verdict: `PASS`, `WARN`, `FAIL`, `SKIP`, or `ERROR`. A blank score cell is therefore never ambiguous; for example, `q007` has a blank `retrieval_recall_at_k` and a `SKIP` verdict. `PARTIAL` applies only to a mean, so it never appears in the per-row CSV; a partial run shows computed rows alongside `ERROR` rows.
+
 ## Breaking output changes (P2-A)
 
 These changes replace fields whose old values were misleading:

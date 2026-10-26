@@ -10,6 +10,7 @@ Add your metric function to `rag_eval.py` following the existing pattern:
 - Add a threshold entry in `THRESHOLDS` at the top of the file
 - Add the score to the `metrics` dict inside `evaluate()`
 - Add a column to `print_rich_table()`
+- Add score and verdict columns to `save_csv()`, appended after the existing columns
 
 ## New example golden sets
 
@@ -17,4 +18,4 @@ Add a JSON file to `examples/` following the schema in `examples/golden_set.json
 
 ## Bug reports
 
-Use the issue template in `.github/ISSUE_TEMPLATE/bug_report.md`.
+[Open an issue](https://github.com/infrixo-systems/rag-evaluation-starter/issues/new). Include the command you ran, your Python version, the full error output, and a minimal golden set entry that reproduces the problem.

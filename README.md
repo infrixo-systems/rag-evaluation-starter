@@ -11,17 +11,19 @@ Most RAG systems look fine in demos. This tells you where yours breaks — befor
 
 ## What you get
 
-Five metrics in a single run. No SaaS. No signup. No mandatory API key.
+Five evaluation metrics per question, with PASS, WARN, FAIL, SKIP or ERROR verdicts as applicable, plus latency. No SaaS, signup or mandatory API key.
 
 **Retrieval Recall@K** — Did the right document chunk actually come back in the top results? This is the most common failure point, and the one teams check last.
 
 **Answer Faithfulness** — Is the answer grounded in what was retrieved, or is the model making things up? Measured by token overlap — no LLM judge required.
 
-**Answer Relevance** — Does the generated answer actually address the question? A system can be grounded and still off-topic. Measured by cosine similarity between question and answer embeddings.
+**Answer Relevance** — Does the generated answer actually address the question? A system can be grounded and still off-topic. Measured by cosine similarity between question and answer embeddings from a local model (downloaded on first use); `--no-embeddings` skips it.
 
-**Exact Match / Token F1** — How closely does the answer match the reference? Useful for factual questions where the answer is a specific value: a price, a date, a policy rule.
+**Exact Match** and **Token F1** — How closely does the answer match the reference? Useful for factual questions where the answer is a specific value: a price, a date, a policy rule.
 
-**Latency + Cost** — How long does each query take? How much will the LLM judge cost? Catches performance regressions before they reach production.
+**Latency** — How long do retrieval and generation take for each query? Catches performance regressions before they reach production. Latency is recorded, not scored.
+
+The only part that costs money is the [optional LLM judge](#optional-llm-as-judge), which calls a paid API and prints its estimated cost.
 
 ---
 
@@ -57,15 +59,92 @@ python rag_eval.py --golden examples/golden_set.json
 
 Supply two functions. That's it.
 
-```python
-from rag_eval import load_golden_set, evaluate, summarise, print_rich_table
+`rag_eval.py` is a standalone script, not an installable Python package. Install its dependencies using `requirements.txt`, then make `rag_eval.py` importable through `PYTHONPATH` or by running your script from the repository root.
 
-# 1. Your retriever — returns [{text, source_id}, ...]
+This complete example runs as-is, with no API key and no model download. Save the golden set as `my_golden_set.json`:
+
+```json
+[
+  {
+    "id": "s1",
+    "question": "How long does standard shipping take?",
+    "expected_answer": "Standard shipping takes 3-5 business days.",
+    "expected_source_ids": ["shipping-policy"],
+    "category": "shipping",
+    "difficulty": "easy"
+  },
+  {
+    "id": "s2",
+    "question": "Do you ship to Antarctica?",
+    "expected_answer": "I don't know.",
+    "expected_source_ids": [],
+    "answerable": false,
+    "category": "shipping",
+    "difficulty": "adversarial"
+  }
+]
+```
+
+Save the script next to it as `my_eval.py`:
+
+```python
+from rag_eval import evaluate, load_golden_set, print_rich_table, save_csv, save_json, summarise
+
+# Stand-ins for your knowledge base, retriever and LLM. Replace them with your own.
+DOCS = {
+    "shipping-policy": "Standard shipping takes 3-5 business days.",
+    "returns-policy": "Items can be returned within 30 days of delivery.",
+}
+
+
+def my_retriever(question: str) -> list[dict]:
+    """Return retrieved chunks, best match first, as {"text": str, "source_id": str}."""
+    words = set(question.lower().split())
+    ranked = sorted(DOCS.items(), key=lambda kv: -len(words & set(kv[1].lower().split())))
+    return [{"text": text, "source_id": source_id} for source_id, text in ranked]
+
+
+def my_generator(question: str, context: list[str]) -> str:
+    """Return the answer to `question`, given the retrieved chunk texts."""
+    words = set(question.lower().split())
+    if context and words & set(context[0].lower().split()):
+        return context[0]
+    return "I don't know."
+
+
+golden = load_golden_set("my_golden_set.json")   # validates the file
+results = evaluate(golden, my_retriever, my_generator, k=3, no_embeddings=True)
+summary = summarise(results)
+print_rich_table(results, summary)
+save_json(results, summary, "results/my_eval.json")
+save_csv(results, "results/my_eval.csv")
+```
+
+Run it from the directory containing both files:
+
+```bash
+# macOS / Linux
+PYTHONPATH=/path/to/rag-evaluation-starter python my_eval.py
+
+# Windows PowerShell
+$env:PYTHONPATH = "C:\path\to\rag-evaluation-starter"; python my_eval.py
+```
+
+**Function contracts** (what `evaluate()` expects):
+
+- **Retriever** — `retriever_fn(question: str) -> list[dict]`. Called once per question. Each chunk must have `"text"` and `"source_id"` keys. Order matters: Recall@K counts only the first `k` chunks, but every returned chunk is passed to the generator and used for faithfulness. The retriever is not told `k`, so return at least `k` chunks.
+- **Generator** — `generator_fn(question: str, context: list[str]) -> str`. `context` is the `text` of every retrieved chunk, in retrieval order.
+- **Errors** — an exception raised by your retriever or generator is not caught; it stops the evaluation.
+- **Embedder (optional)** — `embedder_fn(texts: list[str]) -> numpy.ndarray`, one vector per text. Vectors must be L2-normalised, because relevance is their dot product. The default is `sentence-transformers/all-MiniLM-L6-v2`, which downloads on first use; pass `no_embeddings=True` to skip relevance, or your own function for consistency with your production embeddings.
+
+With a real stack, the two functions might look like this (illustrative; needs your own vector store and client):
+
+```python
 def my_retriever(question: str) -> list[dict]:
     results = my_vectorstore.similarity_search(question, k=3)
     return [{"text": r.page_content, "source_id": r.metadata["source"]} for r in results]
 
-# 2. Your generator — returns an answer string
+
 def my_generator(question: str, context: list[str]) -> str:
     ctx = "\n\n".join(context)
     response = openai_client.chat.completions.create(
@@ -76,15 +155,7 @@ def my_generator(question: str, context: list[str]) -> str:
         ],
     )
     return response.choices[0].message.content
-
-# 3. Run
-golden  = load_golden_set("examples/golden_set.json")
-results = evaluate(golden, my_retriever, my_generator, k=3)
-summary = summarise(results)
-print_rich_table(results, summary)
 ```
-
-The `embedder_fn` parameter is optional — it defaults to `sentence-transformers/all-MiniLM-L6-v2`. Pass your own if you want consistency with your production embeddings.
 
 ---
 
@@ -101,6 +172,12 @@ Retrieval Recall@K is **N/A / SKIP** for unanswerable questions and excluded fro
 the retrieval-recall mean; they remain included in other evaluation metrics.
 The output JSON summary includes `metric_counts` to show each metric's denominator.
 Abstention behavior is not independently graded by this change.
+
+In the bundled sample, `q007` is such a case. Its recall is `N/A SKIP` by design, but its
+abstention answer is still scored by the normal rules against its reference answer:
+faithfulness `WARN` (0.38, as the answer uses words that are not in the retrieved context),
+exact match `FAIL` (0.00) and token F1 `PASS` (0.58). These verdicts do not say whether
+abstaining was the right behavior.
 
 **Breaking change:** Existing golden sets containing an empty `expected_source_ids` list
 for an answerable question now fail validation. For intentionally unanswerable cases,
@@ -130,11 +207,13 @@ The `examples/golden_set.json` file in this repo uses a fictional billing API as
 
 ### Retrieval Recall@K
 
-| Score | Signal | Action |
-|---|---|---|
-| 0.8 – 1.0 | Retrieval is working | Focus on generation quality |
-| 0.5 – 0.8 | Some queries miss the right chunk | Adjust chunk size or embedding model |
-| < 0.5 | Retrieval is broken for many queries | Fix retrieval before touching generation |
+| Score | Verdict | Signal | Action |
+|---|---|---|---|
+| ≥ 0.5 | PASS | Most expected sources come back in the top K | Focus on generation quality |
+| 0.3 – < 0.5 | WARN | Expected sources are often missed | Adjust chunk size or embedding model |
+| < 0.3 | FAIL | Retrieval misses most expected sources | Fix retrieval before touching generation |
+
+These are the default `THRESHOLDS`. The same cut-offs grade each question and the mean row.
 
 A mean Recall@3 of 0.6 means the average per-question retrieval recall is 60%, not necessarily that 40% of questions failed retrieval. See [METRICS.md](METRICS.md) for interpretation.
 
@@ -147,6 +226,18 @@ Low relevance + high faithfulness → the model is accurately summarising the wr
 ### When to WARN vs FAIL
 
 The thresholds at the top of `rag_eval.py` are starting points, not ground truth. For a customer-facing support bot you might set FAIL at 0.7 for faithfulness. For an internal search tool you might tolerate 0.4. Edit the `THRESHOLDS` dict to match your requirements.
+
+The defaults, applied to each question's score and to each mean:
+
+| Metric | PASS | WARN | FAIL |
+|---|---|---|---|
+| Retrieval Recall@K | ≥ 0.5 | 0.3 – < 0.5 | < 0.3 |
+| Answer Faithfulness | ≥ 0.4 | 0.2 – < 0.4 | < 0.2 |
+| Answer Relevance | ≥ 0.6 | 0.4 – < 0.6 | < 0.4 |
+| Exact Match | ≥ 0.4 | 0.2 – < 0.4 | < 0.2 |
+| Token F1 | ≥ 0.4 | 0.2 – < 0.4 | < 0.2 |
+
+Exact Match is always 0 or 1 per question, so a question either passes or fails it; only the mean can be WARN.
 
 If your scores are consistently low and you're not sure which lever to pull, this is the kind of diagnostic work we cover in a [Foundation Check](https://infrixo.com/start?utm_source=github&utm_medium=readme&utm_campaign=rag-eval).
 
@@ -180,7 +271,7 @@ OPENAI_API_KEY=sk-... python rag_eval.py --golden examples/golden_set.json --llm
 ANTHROPIC_API_KEY=sk-ant-... python rag_eval.py --golden examples/golden_set.json --llm-judge --judge-model claude-haiku-4-5-20251001
 ```
 
-The judge scores faithfulness and relevance on a 1–5 scale with a one-sentence reason per score. Results are clearly labelled `[LLM-judged]` in the output. A cost estimate is printed at the end of each run.
+The judge scores faithfulness and relevance on a 1–5 scale with a one-sentence reason per score. Its scores do not replace the default metrics: the terminal table, mean row, and CSV still show the token-overlap and embedding scores. The judge's scores and reasons are stored separately, in each row's `llm_judge` field in the JSON output, next to `llm_judge_status`; the CSV records only `llm_judge_status` and `judge_estimated_cost_usd`. A usage and estimated-cost line is printed at the end of each run. See [METRICS.md](METRICS.md#optional-llm-judge-usage-and-estimated-cost) for details.
 
 ---
 
@@ -233,7 +324,7 @@ The CLI runs only the bundled demo pipeline (`examples/mock_retriever.py`). Any 
 
 ```
 sentence-transformers>=2.0
-tiktoken>=0.5
+tiktoken>=0.7
 rich>=13.0
 numpy>=1.24
 ```
